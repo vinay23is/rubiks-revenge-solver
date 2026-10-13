@@ -4,7 +4,7 @@ Enter the stickers of a real scrambled 4×4×4 cube, get a **verified** solution
 move by move on an animated 3D cube. Everything — validation, solving and replay checks —
 runs in your browser.
 
-**Live app:** _see the deployment link in the repository description_
+**Live app:** https://rubiks-revenge-solver.vercel.app
 
 ![Solving in light mode](docs/screenshots/solve-light.png)
 

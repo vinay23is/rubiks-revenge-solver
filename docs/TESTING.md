@@ -77,3 +77,10 @@ example 2: state WRGWWGOOYWYOOGRBRYBGRBROGGOORYRBGWWWRWBGBOGWRBWYYYBBWYYGWYRBBOO
 example 3: state WBWGROROYBWWOYBWBGYOBWRYRGBOYOOWYRYROBOYROYWWRWBOWORYBGGWWRBGBGGGBGBGGGYRWOGYGGBYOWORYROBYYBRRWR
   89 moves: U B Rw2 D Bw' Rw F' Uw B' Rw2 Uw' U' Fw2 U' Bw2 Rw2 L' B L Fw' F L' B' L Fw F R' Fw F' R F2 R' Fw' F Uw U' R D' R' Uw' U R D Lw L' D' L' D Lw' L D' Rw R' L D L' D' Rw' R D F2 L Bw B' L' F2 L Bw' B U' B2 L2 F2 U' F U R U2 L U2 L B2 U B2 U2 R2 D2 L2 D2
 ```
+
+## Production verification
+
+The same Playwright suite was run against the live deployment
+(`E2E_BASE_URL=https://rubiks-revenge-solver.vercel.app npm run test:e2e`): **12 / 12 passed**
+on desktop and mobile profiles, including full manual sticker entry, solving, replay and
+the final solved check. No console errors on load.
