@@ -249,6 +249,21 @@ export function solve(input: CubeState, opts: { threeTimeLimitMs?: number; cente
     ["edges", "Edge pairing", "Pair up the 24 edge wings into 12 matching edges using 3-cycles that keep the centers intact.", edgeMoves],
     ["three", "Solve as 3×3×3", "With centers solved and edges paired, solve the cube like a 3×3×3 using outer-layer turns only.", threeMoves],
   ];
+  // Cancel moves across stage boundaries (e.g. "F'" ending one stage and "F'" starting the next),
+  // keeping the merged move in the earlier stage.
+  for (let g = 1; g < groups.length; g++) {
+    let a = g - 1;
+    while (a > 0 && groups[a][3].length === 0) a--;
+    const A = groups[a][3];
+    const Bm = groups[g][3];
+    while (A.length && Bm.length) {
+      const merged = simplifyMoves([A[A.length - 1], Bm[0]]);
+      if (merged.length >= 2) break;
+      A.pop();
+      Bm.shift();
+      A.push(...merged);
+    }
+  }
   const all: Move[] = [];
   const stages: SolveStage[] = [];
   for (const [id, name, description, ms] of groups) {

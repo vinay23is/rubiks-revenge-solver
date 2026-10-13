@@ -215,7 +215,7 @@ export function SolutionList() {
                         active
                           ? "bg-[var(--accent)] text-white shadow"
                           : done
-                            ? "bg-[var(--surface-2)] text-[var(--muted)] line-through decoration-1"
+                            ? "bg-[var(--surface-2)] text-[var(--muted)] opacity-50"
                             : "bg-[var(--surface-2)] hover:bg-[var(--accent-soft)]",
                       ].join(" ")}
                     >
