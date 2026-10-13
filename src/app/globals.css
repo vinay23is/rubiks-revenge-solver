@@ -1,26 +1,85 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f5f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f5;
+  --stage: radial-gradient(120% 90% at 50% 30%, #ffffff 0%, #e8ebf2 100%);
+  --border: #dfe3ec;
+  --text: #11141b;
+  --muted: #5d6576;
+  --accent: #4f5ff0;
+  --accent-soft: #e8eaff;
+  --success: #0f9d63;
+  --success-soft: #e3f7ee;
+  --danger: #e11d48;
+  --danger-soft: #fdecef;
+  --cube-body: #15171c;
+  --empty-sticker: repeating-linear-gradient(45deg, #9aa0ab 0 4px, #8a909b 4px 8px);
+}
+
+.dark {
+  --bg: #0b0d12;
+  --surface: #141821;
+  --surface-2: #1d2230;
+  --stage: radial-gradient(120% 90% at 50% 30%, #1b2030 0%, #0d1017 100%);
+  --border: #262c3b;
+  --text: #e8ebf2;
+  --muted: #98a1b3;
+  --accent: #7482ff;
+  --accent-soft: #232a4d;
+  --success: #34d399;
+  --success-soft: #11291f;
+  --danger: #fb7185;
+  --danger-soft: #2d141b;
+  --cube-body: #05060a;
+  --empty-sticker: repeating-linear-gradient(45deg, #5f6570 0 4px, #535963 4px 8px);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Layout: mobile stacks canvas → palette/controls → net → details; desktop puts tools on the right. */
+.app-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "canvas"
+    "primary"
+    "net"
+    "secondary";
+}
+
+@media (min-width: 1024px) {
+  .app-grid {
+    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-areas:
+      "canvas primary"
+      "canvas secondary"
+      "net secondary";
+    grid-template-rows: auto auto 1fr;
+    align-items: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

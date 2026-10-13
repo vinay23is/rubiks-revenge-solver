@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The repository may live inside another folder with its own lockfile.
+  outputFileTracingRoot: import.meta.dirname,
+  poweredByHeader: false,
 };
 
 export default nextConfig;
