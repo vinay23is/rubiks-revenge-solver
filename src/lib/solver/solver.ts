@@ -136,7 +136,7 @@ interface CenterPlan {
   total: number;
 }
 
-function planCenters(state: CubeState, orientations: Orientation[], wingParity: number): CenterPlan {
+function planCenters(state: CubeState, orientations: Orientation[], wingParity: number, keep: number): CenterPlan[] {
   const T = getCenterTables();
   const c0 = readCenters(state);
 
@@ -179,9 +179,10 @@ function planCenters(state: CubeState, orientations: Orientation[], wingParity: 
   }
   cands.sort((a, b) => a.cost - b.cost);
 
-  let best: CenterPlan | null = null;
+  const plans: CenterPlan[] = [];
+  const worst = () => (plans.length < keep ? Infinity : plans[plans.length - 1].total);
   for (const cand of cands.slice(0, 24)) {
-    if (best && cand.cost >= best.total) break;
+    if (cand.cost > worst()) break;
     const m2 = centerMask(cand.c1, (c) => cand.lr.includes(c));
     const paths2 = downhill(
       [m2, cand.parity1] as [number, number],
@@ -195,15 +196,19 @@ function planCenters(state: CubeState, orientations: Orientation[], wingParity: 
       for (const o of cand.os) {
         const d3 = T.stage3[stage3Index(stage3MaskFor(c2, o))];
         const total = cand.path1.length + path2.length + d3;
-        if (!best || total < best.total) best = { path1: cand.path1, path2, orientation: o, total };
+        if (total < worst()) {
+          plans.push({ path1: cand.path1, path2, orientation: o, total });
+          plans.sort((a, b) => a.total - b.total);
+          if (plans.length > keep) plans.pop();
+        }
       }
     }
   }
-  if (!best) throw new Error("center planning failed");
-  return best;
+  if (!plans.length) throw new Error("center planning failed");
+  return plans;
 }
 
-export function solve(input: CubeState, opts: { threeTimeLimitMs?: number } = {}): SolveResult {
+export function solve(input: CubeState, opts: { threeTimeLimitMs?: number; centerPlans?: number } = {}): SolveResult {
   const t0 = Date.now();
   const v = validate(input);
   if (!v.ok || !v.scheme) throw new InvalidCubeError(v.issues.map((i) => i.message));
@@ -212,23 +217,24 @@ export function solve(input: CubeState, opts: { threeTimeLimitMs?: number } = {}
   const orientations = allOrientations(v.scheme);
   const wingParity = permutationParity(readWings(input, orientations[0]));
 
-  // ---- centers
-  const plan = planCenters(input, orientations, wingParity);
-  const o = plan.orientation;
+  // ---- centers + edges: try the best few center plans and keep the shortest combination
   const T = getCenterTables();
-  const c2 = applyCenterPath(readCenters(input), [...plan.path1, ...plan.path2]);
-  const path3 = downhill(stage3MaskFor(c2, o), (m) => T.stage3[stage3Index(m)], STAGE3_MOVES, moveMask, 1)[0];
-
   const toMoves = (p: number[]) => p.map((i) => SOLVER_MOVES[i]);
-  const c1Moves = simplifyMoves(toMoves(plan.path1));
-  const c2Moves = simplifyMoves(toMoves(plan.path2));
-  const c3Moves = simplifyMoves(toMoves(path3));
-  let s = applyMoves(input, [...c1Moves, ...c2Moves, ...c3Moves]);
-
-  // ---- edges
-  const edges = pairEdges(s, o);
-  const edgeMoves = simplifyMoves(edges.moves);
-  s = applyMoves(s, edgeMoves);
+  let chosen: { o: Orientation; c: Move[][]; edges: ReturnType<typeof pairEdges>; afterEdges: Uint8Array; len: number } | null = null;
+  for (const plan of planCenters(input, orientations, wingParity, opts.centerPlans ?? 20)) {
+    const o = plan.orientation;
+    const c2 = applyCenterPath(readCenters(input), [...plan.path1, ...plan.path2]);
+    const path3 = downhill(stage3MaskFor(c2, o), (m) => T.stage3[stage3Index(m)], STAGE3_MOVES, moveMask, 1)[0];
+    const c = [plan.path1, plan.path2, path3].map((p) => simplifyMoves(toMoves(p)));
+    const afterCenters = applyMoves(input, c.flat());
+    const edges = pairEdges(afterCenters, o);
+    const len = c.flat().length + edges.moves.length;
+    if (!chosen || len < chosen.len) chosen = { o, c, edges, afterEdges: applyMoves(afterCenters, edges.moves), len };
+  }
+  const { o, edges } = chosen!;
+  const [c1Moves, c2Moves, c3Moves] = chosen!.c;
+  const edgeMoves = edges.moves;
+  let s = chosen!.afterEdges;
 
   // ---- reduced 3x3
   const cubie = toCubie(s, o);

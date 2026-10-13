@@ -1,5 +1,5 @@
 import { stickerFace } from "../cube/geometry";
-import { Move, applyMoves, parseMoves } from "../cube/moves";
+import { Move, applyMoves, parseMoves, simplifyMoves } from "../cube/moves";
 import { WING_STICKERS } from "../cube/pieces";
 import { permutationParity } from "./centers";
 import { verifyCubie } from "./kociemba";
@@ -139,49 +139,77 @@ function chooseTarget(state: Uint8Array, cur: number[], o: Orientation) {
   return { target: toTarget(b), placed: bestScore, pllAvoided };
 }
 
-export function pairEdges(state: Uint8Array, o: Orientation): { moves: Move[]; info: PairingInfo } {
-  const lib = getWingLibrary();
-  let s = state;
-  let cur = readWings(s, o);
-  const { target, placed, pllAvoided } = chooseTarget(s, cur, o);
-  const tInv = new Array(24);
-  target.forEach((h, p) => (tInv[h] = p));
-  const moves: Move[] = [];
-  let cycles = 0;
+interface BeamNode {
+  cur: number[];
+  moves: Move[];
+  cycles: number;
+}
 
-  for (let iter = 0; iter < 60; iter++) {
-    const misplaced = [];
-    for (let p = 0; p < 24; p++) if (cur[p] !== target[p]) misplaced.push(p);
-    if (!misplaced.length) break;
-    const pos = new Array(24);
-    cur.forEach((h, p) => (pos[h] = p));
+const misplacedCount = (cur: number[], target: number[]) => cur.reduce((n, h, p) => n + (h !== target[p] ? 1 : 0), 0);
 
-    let bestSeq: Move[] | null = null;
-    for (const x of misplaced) {
-      const y = pos[target[x]]; // where the wing that belongs at x is
-      const z = tInv[cur[x]]; // where the wing at x belongs
-      if (z !== y) {
-        const seq = lib.get(cycleKey(y, x, z))!;
-        if (!bestSeq || seq.length < bestSeq.length) bestSeq = seq;
-      }
-    }
-    if (!bestSeq) {
-      // Only 2-cycles remain: place one wing, breaking a 2-cycle into a 3-cycle.
-      for (const x of misplaced) {
-        const y = pos[target[x]];
-        for (const z of misplaced) {
-          if (z === x || z === y) continue;
-          const seq = lib.get(cycleKey(y, x, z))!;
-          if (!bestSeq || seq.length < bestSeq.length) bestSeq = seq;
-        }
-      }
-    }
-    if (!bestSeq) throw new Error("edge pairing stuck (odd wing permutation)");
-    moves.push(...bestSeq);
-    s = applyMoves(s, bestSeq);
-    cur = readWings(s, o);
-    cycles++;
+/** Candidate 3-cycles (y -> x -> z) for a node: prefer cycles that place two wings at once. */
+function candidateCycles(cur: number[], target: number[], tInv: number[]): [number, number, number][] {
+  const pos = new Array(24);
+  cur.forEach((h, p) => (pos[h] = p));
+  const out: [number, number, number][] = [];
+  const misplaced: number[] = [];
+  for (let p = 0; p < 24; p++) if (cur[p] !== target[p]) misplaced.push(p);
+  for (const x of misplaced) {
+    const y = pos[target[x]]; // where the wing that belongs at x is
+    const z = tInv[cur[x]]; // where the wing at x belongs
+    if (z !== y) out.push([y, x, z]);
   }
-  if (cur.some((h, p) => h !== target[p])) throw new Error("edge pairing did not converge");
-  return { moves, info: { pllParityAvoided: pllAvoided, cycles, wingsAlreadyPlaced: placed } };
+  if (out.length) return out;
+  // Only 2-cycles remain: place one wing, turning two 2-cycles into a 3-cycle chain.
+  for (const x of misplaced) {
+    const y = pos[target[x]];
+    for (const z of misplaced) if (z !== x && z !== y) out.push([y, x, z]);
+  }
+  return out;
+}
+
+/**
+ * Execute the wing permutation with library 3-cycles. A small beam search picks
+ * the order of cycles, scoring each by its length after cancelling against the
+ * moves already chosen.
+ */
+export function pairEdges(state: Uint8Array, o: Orientation, beamWidth = 8): { moves: Move[]; info: PairingInfo } {
+  const lib = getWingLibrary();
+  const cur0 = readWings(state, o);
+  const { target, placed, pllAvoided } = chooseTarget(state, cur0, o);
+  const tInv: number[] = new Array(24);
+  target.forEach((h, p) => (tInv[h] = p));
+
+  const estimate = (n: BeamNode) => n.moves.length + misplacedCount(n.cur, target) * 5.5;
+  let beam: BeamNode[] = [{ cur: cur0, moves: [], cycles: 0 }];
+  let best: BeamNode | null = null;
+  for (let depth = 0; depth < 40 && beam.length; depth++) {
+    const next = new Map<string, BeamNode>();
+    for (const node of beam) {
+      if (misplacedCount(node.cur, target) === 0) {
+        if (!best || node.moves.length < best.moves.length) best = node;
+        continue;
+      }
+      for (const [y, x, z] of candidateCycles(node.cur, target, tInv)) {
+        const seq = lib.get(cycleKey(y, x, z));
+        if (!seq) throw new Error("missing wing cycle");
+        const cur = [...node.cur];
+        cur[x] = node.cur[y];
+        cur[z] = node.cur[x];
+        cur[y] = node.cur[z];
+        const moves = simplifyMoves([...node.moves, ...seq]);
+        const key = cur.join(",");
+        const prev = next.get(key);
+        if (!prev || moves.length < prev.moves.length) next.set(key, { cur, moves, cycles: node.cycles + 1 });
+      }
+    }
+    beam = [...next.values()].sort((a, b) => estimate(a) - estimate(b)).slice(0, beamWidth);
+    if (best && beam.every((n) => n.moves.length >= best!.moves.length)) break;
+  }
+  if (!best) throw new Error("edge pairing did not converge");
+
+  // Verify on the actual sticker state.
+  const final = readWings(applyMoves(state, best.moves), o);
+  if (final.some((h, p) => h !== target[p])) throw new Error("edge pairing verification failed");
+  return { moves: best.moves, info: { pllParityAvoided: pllAvoided, cycles: best.cycles, wingsAlreadyPlaced: placed } };
 }
