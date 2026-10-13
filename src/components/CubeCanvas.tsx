@@ -2,7 +2,7 @@
 
 import { Canvas, ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, RoundedBox } from "@react-three/drei";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { FACE_NORMALS, STICKER_POINTS, Vec3, dot, layerDepth } from "@/lib/cube/geometry";
@@ -63,7 +63,7 @@ const STICKER_TRANSFORMS = STICKER_POINTS.map((p, i) => {
   return { pos, q };
 });
 
-function Sticker({
+const Sticker = memo(function Sticker({
   index,
   color,
   flagged,
@@ -110,7 +110,7 @@ function Sticker({
       </mesh>
     </group>
   );
-}
+});
 
 function FaceLabel({ face, color }: { face: number; color: string }) {
   const texture = useMemo(() => {
@@ -166,8 +166,9 @@ function CubeModel({ dark }: { dark: boolean }) {
   }, [target]);
 
   const rotGroup = useRef<THREE.Group>(null);
-  useFrame(() => {
+  useFrame((three) => {
     if (!anim || !rotGroup.current) return;
+    three.invalidate(); // frameloop is "demand": keep rendering only while a turn is animating
     const t = Math.min(1, (performance.now() - anim.start) / anim.duration);
     const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const quarters = anim.move.amount === 3 ? -1 : anim.move.amount;
@@ -232,7 +233,8 @@ const fitFactor = (aspect: number) => (aspect < 1.05 ? Math.pow(1.05 / aspect, 0
 
 function ViewController() {
   const req = useCube((s) => s.viewRequest);
-  const { camera, controls, size } = useThree() as unknown as {
+  const { camera, controls, size, invalidate } = useThree() as unknown as {
+    invalidate: () => void;
     camera: THREE.Camera;
     controls: OrbitControlsImpl | null;
     size: { width: number; height: number };
@@ -242,7 +244,8 @@ function ViewController() {
   useEffect(() => {
     camera.position.setLength(new THREE.Vector3(...VIEWS.default).length() * fit);
     controls?.update();
-  }, [fit, camera, controls]);
+    invalidate();
+  }, [fit, camera, controls, invalidate]);
   useEffect(() => {
     if (req.n === 0) return;
     const dist = camera.position.length();
@@ -253,11 +256,13 @@ function ViewController() {
       to.copy(camera.position).setLength(len);
     }
     anim.current = { from: camera.position.clone(), to, start: performance.now() };
+    invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [req, camera]);
-  useFrame(() => {
+  useFrame((three) => {
     const a = anim.current;
     if (!a) return;
+    three.invalidate();
     const t = Math.min(1, (performance.now() - a.start) / 450);
     const e = 1 - Math.pow(1 - t, 3);
     // Interpolate direction and length separately so the camera orbits rather than cutting through the cube.
@@ -274,6 +279,7 @@ function ViewController() {
 export default function CubeCanvas({ dark }: { dark: boolean }) {
   return (
     <Canvas
+      frameloop="demand"
       dpr={[1, 2]}
       camera={{ position: VIEWS.default, fov: 34 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
